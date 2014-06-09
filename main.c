@@ -4,9 +4,22 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 
 #define SIZE 128
+#define QUEUE_KEY 696
+
+struct message
+{
+  long mtype; //1 - Terminate all processes
+  int length;
+  char text[SIZE];
+};
+int queue_id = 0;
+
 short ok = 1;
+short suspend = 0;
 
 //String buffer
 char buffer[SIZE];
@@ -21,10 +34,18 @@ void read_data()
 	close(fd_rp[0]);
 	while (ok)
 	{
-		if ((tmp = read(STDIN_FILENO, buffer, SIZE)) > 0)
-		{
-			write(fd_rp[1], buffer, tmp);
-		}
+    if (!suspend)
+    {
+  		if ((tmp = read(STDIN_FILENO, buffer, SIZE)) > 0 && !suspend)
+  		{
+  			write(fd_rp[1], buffer, tmp);
+  		}
+      else
+      {
+        fflush(stdin);
+      }
+    }
+    else sleep(1);
 	}
 }
 
@@ -35,18 +56,22 @@ void process_data()
 	close(fd_po[0]);
 	while (ok)
 	{
-		if((tmp = read(fd_rp[0], buffer, SIZE)) > 0)
-		{
-			for(i = 0; i < tmp; i++)
-			{
-				if(buffer[i] == '\n')
-				{
-					write(fd_po[1], &count, sizeof(count));
-					count = 0;
-				}
-				else count++;
-			}
-		}
+    if (!suspend)
+    {
+  		if((tmp = read(fd_rp[0], buffer, SIZE)) > 0)
+  		{
+  			for(i = 0; i < tmp; i++)
+  			{
+  				if(buffer[i] == '\n')
+  				{
+  					write(fd_po[1], &count, sizeof(count));
+  					count = 0;
+  				}
+  				else count++;
+  			}
+  		}
+    }
+    else sleep(1);
 	}
 }
 
@@ -56,31 +81,43 @@ void output_data()
 	close(fd_po[1]);
 	while (ok)
 	{
-		if(read(fd_po[0], &count, sizeof(count)) > 0)
-		{
-			printf("Received %d characters...\n", count);
-		}
+    if (!suspend)
+    {
+  		if(read(fd_po[0], &count, sizeof(count)) > 0)
+  		{
+  			printf("Received %d characters...\n", count);
+  		}
+    }
+    else sleep(1);
 	}
 }
 
 void usr1()
 {
-	printf("Received SIGUSR1 at PID %d\n", getpid());
+  printf("Received SIGUSR1 at PID %d...\n", getpid());
+  suspend = 1;
+  printf("Execution paused!\n");
 }
+
+
 
 void usr2()
 {
-  printf("Received SIGUSR2 at PID %d\n", getpid());
+  printf("Received SIGUSR2 at PID %d...\n", getpid());
+  suspend = 0;
+  printf("Execution resumed!\n");
 }
 
 void ctrlc()
 {
-  printf("Received SIGINT at PID %d\n", getpid());
+  int pid_current = getpid();
+  printf("Received SIGINT at PID %d...\n", pid_current);
+  exit(0);
 }
 
 void cont()
 {
-  printf("Received SIGCONT at PID %d\n", getpid());
+  printf("Received SIGCONT at PID %d...\n", getpid());
 }
 
 //Call with kill -s. -n switch may break on some systems!
@@ -96,39 +133,37 @@ void register_signal_handlers()
 
 int main()
 {
+  //pid_parent = getpid();
 	register_signal_handlers();
 
 	pipe(fd_rp);
 	pipe(fd_po);
 
 	int p_id = fork();
-	if (p_id == -1) //AWW! Shit happens
+	if (p_id == -1)
 	{
 		printf("An error has occured while creating first derived process!\n");
 	}
-	else if (p_id == 0) //OK -> Derived process
+	else if (p_id == 0)
 	{
-		int dp_id = fork(); //dp = derived process
-		if (dp_id == -1) //oh boy!
-		{
-			printf("An error has occured while creating second derived process!\n");
-		}
-		else if (dp_id == 0) //OK -> derived process of derived process (P3)
-		{
-			printf("Data output at PID %d\n", getpid());
-			output_data();
-		}
-		else //OK -> derived process (P2)
-		{
 			printf("Data processing at PID %d\n", getpid());
 			process_data();
-		}
 	}
-	else //OK -> Parent process (P1)
-	{
-		printf("Data reader at PID %d\n", getpid());
+  //pid_processor = p_id;
 
-		read_data();
-	}
+  p_id = fork();
+  if (p_id == -1)
+  {
+    printf("An error has occured while creating second derived process!\n");
+  }
+  else if (p_id == 0)
+  {
+    printf("Data output at PID %d\n", getpid());
+    output_data();
+  }
+  //pid_output = p_id;
+
+  printf("Data reader at PID %d\n", getpid());
+  read_data();
 	return 0;
 }
