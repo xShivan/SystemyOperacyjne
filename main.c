@@ -97,7 +97,7 @@ void output_data()
 
 void send_message(int type)
 {
-	struct msgbuf sndbuffer = { 2, "Kolejka komunikatów", type };
+	struct msgbuf sndbuffer = { 2, "Message queue", type };
 
 	msqid = msgget(key, 0666 | IPC_CREAT);
 	msgsnd(msqid, &sndbuffer, sizeof(struct msgbuf) - sizeof(long), 0);
@@ -168,7 +168,7 @@ void cont()
 	}
 	else
 	{
-		printf("Obsługa przez proces podrzędny %d\n", getpid());
+		printf("Handling by subprocess %d\n", getpid());
 		struct msgbuf rcvbuffer;
 		msqid = msgget(key, 0666 | IPC_CREAT);
 		msgrcv(msqid, &rcvbuffer, sizeof(struct msgbuf) - sizeof(long), 2, 0);
@@ -208,7 +208,7 @@ void register_signal_handlers()
 {
   if(signal(SIGINT, ctrlc) == SIG_ERR || signal(SIGUSR1, usr1) == SIG_ERR || signal(SIGUSR2, usr2) == SIG_ERR || signal(SIGCONT, cont) == SIG_ERR)
 	{
-		printf("Nie można przechwycić sygnału\n");
+		printf("Unable to intercept the signal!\n");
   }
 }
 
